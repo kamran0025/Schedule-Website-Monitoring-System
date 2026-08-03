@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Universal Newsletter",
+  "version": "0.0.1",
+  "description": "Subscribe to any public webpage and get scheduled AI-summarized email digests.",
+  "action": {
+    "default_popup": "src/popup/index.html"
+  },
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["http://localhost:4000/*"]
+}

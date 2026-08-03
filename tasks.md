@@ -2,10 +2,10 @@
 
 ## Phase 1 - Setup
 
--   [ ] Initialize Express.js + TypeScript backend
--   [ ] Configure ESLint, Prettier, env handling
--   [ ] Initialize React + Vite + Typescript Chrome Extension
--   [ ] Configure TailwindCSS and API client
+-   [x] Initialize Express.js + TypeScript backend
+-   [x] Configure ESLint, Prettier, env handling
+-   [x] Initialize React + Vite + Typescript Chrome Extension
+-   [x] Configure TailwindCSS and API client
 
 ## Phase 2 - Database
 
