@@ -9,8 +9,8 @@
 
 ## Phase 2 - Database
 
--   [ ] Create Schedule model
--   [ ] Create ExecutionHistory model
+-   [x] Create Schedule model
+-   [x] Create ExecutionHistory model
 
 ## Phase 3 - APIs
 
