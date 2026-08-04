@@ -44,3 +44,22 @@ POST /:id/run — sets nextRunAt to now. It doesn't execute anything yet, since 
 env.ts — added maxActiveSchedulesPerInstance, rateLimitWindowMs, rateLimitMaxRequests (with .env/.env.example updated to match).
 app.ts — mounted the rate limiter and both routers under /api, plus a catch-all JSON error handler so a failed DB call returns {error: "..."} instead of Express's default HTML error page.
 One bug fixed along the way: express-rate-limit v7 refuses to start if a custom keyGenerator falls back to req.ip directly (IPv6 addresses can collide across subnets) — had to wrap that fallback in their ipKeyGenerator helper.
+
+# Here's a walkthrough of everything Phase 4 added, grouped by concern:
+
+1. Instance identity (extension side)
+
+The extension needed its half of the Phase 3 auth handshake:
+
+lib/instance.ts — getOrCreateInstance() checks chrome.storage.local for a saved instanceId/apiKey; if none exists it generates an instanceId (crypto.randomUUID()), calls POST /api/instances to register it, and persists the returned apiKey. Cached in-memory too, and concurrent callers await the same in-flight registration instead of double-registering.
+lib/apiClient.ts — a request interceptor now attaches x-instance-id/x-api-key to every call by awaiting getOrCreateInstance(), except for the /api/instances registration call itself (which can't have credentials yet — that's what would deadlock the interceptor against its own in-flight promise). Also fixed a pre-existing typo (API_BASE_UR → API_BASE_URL) that meant every request was going to baseURL: undefined.
+2. Schedule API client
+
+lib/scheduleApi.ts — typed wrappers for all six Phase 3 endpoints (list/create/pause/resume/delete/run) plus the Schedule type mirroring the Mongoose model.
+lib/errors.ts — extractErrorMessage() pulls the {error: "..."} message out of a failed axios response so the UI can show the backend's actual validation message (e.g. "Maximum of 20 active schedules reached") instead of a generic failure string.
+3. UI
+
+popup/components/ScheduleForm.tsx — the subscription form: URL/email/interval inputs, client-side interval floor matching the backend's MIN_SCHEDULE_INTERVAL_MINUTES, inline error display, disabled submit while in flight.
+popup/components/ScheduleItem.tsx / ScheduleList.tsx — the dashboard: one row per schedule showing status, interval, and a relative next-run time, with Pause/Resume (toggled by current status), Run Now, and Delete buttons. Each row tracks its own pending action so one schedule's request can't block or misattribute to another.
+popup/App.tsx — wires it together: loads schedules on mount, prepends new ones on create, patches the changed row in place on pause/resume/run, and removes it on delete — no full refetch needed after an action.
+Nothing here executes a render/summarize/email yet — Run Now still just flips nextRunAt to now, same as Phase 3, since the scheduler (Phase 5) and worker (Phase 6) aren't built.

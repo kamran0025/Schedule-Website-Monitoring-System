@@ -25,10 +25,10 @@
 
 ## Phase 4 - Extension UI
 
--   [ ] Create subscription form
--   [ ] Dashboard
--   [ ] Pause/Resume/Delete actions
--   [ ] Run Now action
+-   [x] Create subscription form
+-   [x] Dashboard
+-   [x] Pause/Resume/Delete actions
+-   [x] Run Now action
 
 ## Phase 5 - Scheduler
 
