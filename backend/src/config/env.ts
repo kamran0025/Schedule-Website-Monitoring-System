@@ -15,4 +15,5 @@ export const env = {
   maxActiveSchedulesPerInstance: Number(required("MAX_ACTIVE_SCHEDULES_PER_INSTANCE", "20")),
   rateLimitWindowMs: Number(required("RATE_LIMIT_WINDOW_MS", String(15 * 60 * 1000))),
   rateLimitMaxRequests: Number(required("RATE_LIMIT_MAX_REQUESTS", "100")),
+  schedulerPollIntervalMs: Number(required("SCHEDULER_POLL_INTERVAL_MS", String(30 * 1000))),
 };

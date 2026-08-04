@@ -32,9 +32,9 @@
 
 ## Phase 5 - Scheduler
 
--   [ ] Implement scheduler
--   [ ] Find due schedules
--   [ ] Enqueue jobs
+-   [x] Implement scheduler
+-   [x] Find due schedules
+-   [x] Enqueue jobs
 
 ## Phase 6 - Queue
 

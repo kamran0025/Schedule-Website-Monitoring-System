@@ -63,3 +63,20 @@ popup/components/ScheduleForm.tsx — the subscription form: URL/email/interval 
 popup/components/ScheduleItem.tsx / ScheduleList.tsx — the dashboard: one row per schedule showing status, interval, and a relative next-run time, with Pause/Resume (toggled by current status), Run Now, and Delete buttons. Each row tracks its own pending action so one schedule's request can't block or misattribute to another.
 popup/App.tsx — wires it together: loads schedules on mount, prepends new ones on create, patches the changed row in place on pause/resume/run, and removes it on delete — no full refetch needed after an action.
 Nothing here executes a render/summarize/email yet — Run Now still just flips nextRunAt to now, same as Phase 3, since the scheduler (Phase 5) and worker (Phase 6) aren't built.
+
+# Here's a walkthrough of everything Phase 5 added, grouped by concern:
+
+1. Finding due schedules
+
+scheduler/scheduler.ts — startScheduler() runs pollDueSchedules() on a setInterval (env.schedulerPollIntervalMs, default 30s — no need for cron-expression scheduling here, just a fixed poll). Each tick finds every active schedule whose nextRunAt has passed.
+2. Claiming them without double-processing
+
+The tricky part of any poll-based scheduler: if a tick takes longer than the poll interval, or two ticks overlap, the same due schedule could get picked up twice before anything consumes it. claimDueSchedule() re-checks status: "active", nextRunAt: {$lte: now} inside a findOneAndUpdate — same filter as the find, plus the write — so the DB only lets one caller "win" per schedule. The winner's reward is having nextRunAt pushed forward by intervalMinutes immediately, atomically, in that same operation; a second concurrent tick's update simply matches nothing and comes back null, which the loop treats as "already claimed, skip."
+3. Queueing execution jobs
+
+scheduler/executionQueue.ts — a minimal enqueue() / process() interface deliberately shaped like BullMQ's Queue/Worker API. Right now it's in-process: enqueue() just calls whatever handler process() registered, or logs a warning and drops the job if nothing has registered one yet (nothing has — that's Phase 6). Keeping the interface identical means Phase 6 swaps the class body for a real Redis-backed BullMQ queue without touching scheduler.ts's call site.
+4. Wiring
+
+index.ts — startScheduler() is called right after connectDb() succeeds, before app.listen(), so the poll loop only starts once Mongo is reachable.
+env.ts — added schedulerPollIntervalMs (SCHEDULER_POLL_INTERVAL_MS, default 30000).
+Verified by hand against a running instance: created a schedule, called POST /:id/run to mark it due, and confirmed the next poll tick advanced nextRunAt by exactly intervalMinutes — proof the claim logic is doing its job instead of just re-running the same schedule forever.
