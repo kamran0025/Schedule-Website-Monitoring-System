@@ -1,9 +1,8 @@
 import { Schema, model, Types, type InferSchemaType } from "mongoose";
 
 // defines the ExecutionHistory collection:
-// one document per worker run against a schedule (success/failed/skipped, timestamps, error message, content hash, summary sent). 
+// one document per worker run against a schedule (success/failed/skipped, timestamps, error message, content hash, summary sent).
 // This is what Phase 11's history API will query.
-
 
 const executionHistorySchema = new Schema({
   scheduleId: { type: Types.ObjectId, ref: "Schedule", required: true, index: true },

@@ -14,14 +14,14 @@
 
 ## Phase 3 - APIs
 
--   [ ] Extension instance ID + API key issuance/middleware
--   [ ] POST /schedule (min interval + per-user schedule cap enforced)
--   [ ] GET /schedule
--   [ ] PATCH /schedule/:id/pause
--   [ ] PATCH /schedule/:id/resume
--   [ ] DELETE /schedule/:id
--   [ ] POST /schedule/:id/run
--   [ ] Rate limiting middleware
+-   [x] Extension instance ID + API key issuance/middleware
+-   [x] POST /schedule (min interval + per-user schedule cap enforced)
+-   [x] GET /schedule
+-   [x] PATCH /schedule/:id/pause
+-   [x] PATCH /schedule/:id/resume
+-   [x] DELETE /schedule/:id
+-   [x] POST /schedule/:id/run
+-   [x] Rate limiting middleware
 
 ## Phase 4 - Extension UI
 

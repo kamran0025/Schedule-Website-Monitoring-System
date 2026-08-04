@@ -2,9 +2,9 @@ import { Schema, model, type InferSchemaType } from "mongoose";
 
 export const MIN_SCHEDULE_INTERVAL_MINUTES = 15;
 
-//defines the Schedule collection: one document per user's "watch this URL" subscription. 
-// Holds instanceId/email (who owns it), url/intervalMinutes (what to watch and how often), 
-// status (active/paused), and nextRunAt/lastRunAt/lastContentHash — the fields the Phase 5 scheduler 
+//defines the Schedule collection: one document per user's "watch this URL" subscription.
+// Holds instanceId/email (who owns it), url/intervalMinutes (what to watch and how often),
+// status (active/paused), and nextRunAt/lastRunAt/lastContentHash — the fields the Phase 5 scheduler
 // and Phase 9 AI change-detection will read/write.
 
 const scheduleSchema = new Schema(
