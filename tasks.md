@@ -38,9 +38,9 @@
 
 ## Phase 6 - Queue
 
--   [ ] Configure BullMQ
--   [ ] Retry strategy
--   [ ] Worker implementation
+-   [x] Configure BullMQ
+-   [x] Retry strategy
+-   [x] Worker implementation
 
 ## Phase 7 - Puppeteer
 

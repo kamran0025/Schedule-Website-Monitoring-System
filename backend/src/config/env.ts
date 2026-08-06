@@ -16,4 +16,8 @@ export const env = {
   rateLimitWindowMs: Number(required("RATE_LIMIT_WINDOW_MS", String(15 * 60 * 1000))),
   rateLimitMaxRequests: Number(required("RATE_LIMIT_MAX_REQUESTS", "100")),
   schedulerPollIntervalMs: Number(required("SCHEDULER_POLL_INTERVAL_MS", String(30 * 1000))),
+  redisUrl: required("REDIS_URL", "redis://localhost:6379"),
+  executionJobMaxAttempts: Number(required("EXECUTION_JOB_MAX_ATTEMPTS", "3")),
+  executionJobBackoffDelayMs: Number(required("EXECUTION_JOB_BACKOFF_DELAY_MS", "5000")),
+  executionWorkerConcurrency: Number(required("EXECUTION_WORKER_CONCURRENCY", "5")),
 };

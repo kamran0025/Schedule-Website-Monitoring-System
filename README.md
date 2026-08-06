@@ -80,3 +80,20 @@ scheduler/executionQueue.ts — a minimal enqueue() / process() interface delibe
 index.ts — startScheduler() is called right after connectDb() succeeds, before app.listen(), so the poll loop only starts once Mongo is reachable.
 env.ts — added schedulerPollIntervalMs (SCHEDULER_POLL_INTERVAL_MS, default 30000).
 Verified by hand against a running instance: created a schedule, called POST /:id/run to mark it due, and confirmed the next poll tick advanced nextRunAt by exactly intervalMinutes — proof the claim logic is doing its job instead of just re-running the same schedule forever.
+
+# Here's a walkthrough of everything Phase 6 added, grouped by concern:
+
+1. Redis connection
+
+queue/connection.ts — createRedisConnection() returns a fresh ioredis client per caller, with maxRetriesPerRequest: null (BullMQ's requirement for any connection it manages, since it handles retries for blocking commands itself). Each process (API/scheduler vs. worker) makes its own connection — no sharing needed since they run separately.
+2. The real queue (replaces Phase 5's in-memory stand-in)
+
+queue/executionQueue.ts — a BullMQ Queue named "schedule-execution". enqueueExecution() calls queue.add(), attaching the retry strategy at add-time: attempts (default 3) and exponential backoff (default 5s base delay), both configurable via env. Also caps Redis growth with removeOnComplete: 100 / removeOnFail: 500 so history doesn't accumulate forever. scheduler.ts now imports enqueueExecution from here instead of the old scheduler/executionQueue.ts, which is deleted — same call site, same job shape, just a real Redis-backed queue underneath instead of an in-process object.
+3. The worker
+
+queue/worker.ts — startWorker() creates a BullMQ Worker consuming that same queue, with concurrency from env (default 5 — the same knob Phase 7 will need to cap concurrent Puppeteer pages). completed/failed event listeners log outcomes so retry behavior is visible. The job processor itself is still a placeholder — it logs the job and returns — since rendering (Phase 7), DOM extraction (Phase 8), AI summary (Phase 9), and email (Phase 10) don't exist yet.
+worker.ts (top-level entry point) — a separate process from the API: connects to Mongo, then starts the worker. Run via npm run dev:worker (or start:worker after build), independent of npm run dev. This matches the plan's architecture split between the Express backend and a distinct Worker Service — a heavy Puppeteer-driven worker shouldn't share a process with the request-handling API.
+4. Config
+
+env.ts — added redisUrl, executionJobMaxAttempts, executionJobBackoffDelayMs, executionWorkerConcurrency (with .env/.env.example updated to match).
+Not verified end-to-end here — there's no Redis server or Docker available in this environment, so the queue/worker code is confirmed to build, lint, and fail gracefully (BullMQ/ioredis retry with backoff and log ECONNREFUSED rather than crashing) but hasn't been exercised against a live Redis. Point REDIS_URL at a real instance (local install or a hosted one) and run both npm run dev and npm run dev:worker to see a job actually flow through.

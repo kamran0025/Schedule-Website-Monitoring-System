@@ -1,6 +1,6 @@
 import { env } from "../config/env.js";
 import { ScheduleModel } from "../models/schedule.model.js";
-import { executionQueue } from "./executionQueue.js";
+import { enqueueExecution } from "../queue/executionQueue.js";
 
 let pollHandle: NodeJS.Timeout | null = null;
 
@@ -25,7 +25,7 @@ export async function pollDueSchedules(): Promise<void> {
     const claimed = await claimDueSchedule(schedule._id, now, schedule.intervalMinutes);
     if (!claimed) continue;
 
-    await executionQueue.enqueue({ scheduleId: claimed._id.toString(), url: claimed.url });
+    await enqueueExecution({ scheduleId: claimed._id.toString(), url: claimed.url });
   }
 }
 
