@@ -20,4 +20,8 @@ export const env = {
   executionJobMaxAttempts: Number(required("EXECUTION_JOB_MAX_ATTEMPTS", "3")),
   executionJobBackoffDelayMs: Number(required("EXECUTION_JOB_BACKOFF_DELAY_MS", "5000")),
   executionWorkerConcurrency: Number(required("EXECUTION_WORKER_CONCURRENCY", "5")),
+  renderNavigationTimeoutMs: Number(required("RENDER_NAVIGATION_TIMEOUT_MS", "30000")),
+  renderMaxResponseBytes: Number(required("RENDER_MAX_RESPONSE_BYTES", String(25 * 1024 * 1024))),
+  renderMaxConcurrentPages: Number(required("RENDER_MAX_CONCURRENT_PAGES", "3")),
+  renderUserAgent: required("RENDER_USER_AGENT", "NewsletterExtensionBot/1.0 (+render worker)"),
 };

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import { extractErrorMessage } from "../../lib/errors";
 import { createSchedule, type Schedule } from "../../lib/scheduleApi";
+import { validatePageUrl } from "../../lib/validateUrl";
 
 const MIN_INTERVAL_MINUTES = 15;
 const DEFAULT_INTERVAL_MINUTES = 60;
@@ -20,6 +21,12 @@ function ScheduleForm({ onCreated }: ScheduleFormProps) {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+
+    const urlError = validatePageUrl(url);
+    if (urlError) {
+      setError(urlError);
+      return;
+    }
 
     if (intervalMinutes < MIN_INTERVAL_MINUTES) {
       setError(`Interval must be at least ${MIN_INTERVAL_MINUTES} minutes`);

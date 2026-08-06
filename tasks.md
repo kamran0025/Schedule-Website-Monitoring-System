@@ -44,13 +44,13 @@
 
 ## Phase 7 - Puppeteer
 
--   [ ] URL validation (http/https only)
--   [ ] SSRF guard: block loopback/private/link-local IPs incl. 169.254.169.254, re-check after redirects
--   [ ] Navigation timeout + max response size
--   [ ] Concurrent page cap / resource budget
--   [ ] Render page
--   [ ] Wait for page load
--   [ ] Extract HTML
+-   [x] URL validation (http/https only)
+-   [x] SSRF guard: block loopback/private/link-local IPs incl. 169.254.169.254, re-check after redirects
+-   [x] Navigation timeout + max response size
+-   [x] Concurrent page cap / resource budget
+-   [x] Render page
+-   [x] Wait for page load
+-   [x] Extract HTML
 
 ## Phase 8 - DOM Processing
 

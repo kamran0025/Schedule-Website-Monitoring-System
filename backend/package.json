@@ -24,7 +24,9 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.1",
     "ioredis": "^6.0.0",
-    "mongoose": "^9.9.1"
+    "ipaddr.js": "^2.5.0",
+    "mongoose": "^9.9.1",
+    "puppeteer": "^25.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
