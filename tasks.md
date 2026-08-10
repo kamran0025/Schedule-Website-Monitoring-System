@@ -54,16 +54,16 @@
 
 ## Phase 8 - DOM Processing
 
--   [ ] Remove header/footer/navigation
--   [ ] Extract main/article content
--   [ ] Normalize text
+-   [x] Remove header/footer/navigation
+-   [x] Extract main/article content
+-   [x] Normalize text
 
 ## Phase 9 - AI
 
--   [ ] Content-hash change detection (skip summarization if unchanged)
--   [ ] Build summarization service
--   [ ] Define prompt
--   [ ] Handle API failures
+-   [x] Content-hash change detection (skip summarization if unchanged)
+-   [x] Build summarization service
+-   [x] Define prompt
+-   [x] Handle API failures
 
 ## Phase 10 - Email
 

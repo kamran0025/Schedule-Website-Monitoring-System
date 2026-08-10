@@ -1,6 +1,10 @@
 import { UnrecoverableError, Worker, type Job } from "bullmq";
 
+import { hashContent } from "../ai/contentHash.js";
+import { summarizeContent } from "../ai/summarize.js";
 import { env } from "../config/env.js";
+import { ContentExtractionError, extractContent } from "../dom/extractContent.js";
+import { ScheduleModel } from "../models/schedule.model.js";
 import { closeBrowser } from "../render/browser.js";
 import { renderPage } from "../render/renderPage.js";
 import { InvalidUrlError, SsrfBlockedError } from "../render/ssrfGuard.js";
@@ -11,9 +15,11 @@ async function processExecutionJob(job: Job<ExecutionJob>): Promise<void> {
   console.log(`Processing execution job ${job.id} for schedule ${job.data.scheduleId} (${job.data.url})`);
 
   let html: string;
+  let finalUrl: string;
   try {
     const result = await renderPage(job.data.url);
     html = result.html;
+    finalUrl = result.finalUrl;
   } catch (error) {
     // A blocked/invalid URL will never succeed on retry - fail the job
     // permanently instead of burning the configured retry attempts on it.
@@ -24,8 +30,40 @@ async function processExecutionJob(job: Job<ExecutionJob>): Promise<void> {
   }
 
   console.log(`Rendered ${html.length} chars of HTML for schedule ${job.data.scheduleId}`);
-  // DOM extraction (Phase 8), AI summary (Phase 9), and email delivery
-  // (Phase 10) aren't implemented yet.
+
+  let content;
+  try {
+    content = extractContent(html, finalUrl);
+  } catch (error) {
+    if (error instanceof ContentExtractionError) {
+      throw new UnrecoverableError(error.message);
+    }
+    throw error;
+  }
+
+  console.log(
+    `Extracted "${content.title}" (${content.text.length} chars) for schedule ${job.data.scheduleId}`,
+  );
+
+  const schedule = await ScheduleModel.findById(job.data.scheduleId).select("lastContentHash");
+  if (!schedule) {
+    console.log(`Schedule ${job.data.scheduleId} no longer exists, dropping job ${job.id}`);
+    return;
+  }
+
+  const contentHash = hashContent(content.text);
+  if (contentHash === schedule.lastContentHash) {
+    console.log(`Content unchanged for schedule ${job.data.scheduleId}, skipping summarization`);
+    return;
+  }
+
+  const summary = summarizeContent(content.text);
+
+  console.log(`Summary for schedule ${job.data.scheduleId}: ${summary}`);
+  // Email delivery (Phase 10) isn't implemented yet.
+
+  schedule.lastContentHash = contentHash;
+  await schedule.save();
 }
 
 export function startWorker(): Worker<ExecutionJob> {

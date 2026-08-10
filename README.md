@@ -97,3 +97,46 @@ worker.ts (top-level entry point) — a separate process from the API: connects 
 
 env.ts — added redisUrl, executionJobMaxAttempts, executionJobBackoffDelayMs, executionWorkerConcurrency (with .env/.env.example updated to match).
 Not verified end-to-end here — there's no Redis server or Docker available in this environment, so the queue/worker code is confirmed to build, lint, and fail gracefully (BullMQ/ioredis retry with backoff and log ECONNREFUSED rather than crashing) but hasn't been exercised against a live Redis. Point REDIS_URL at a real instance (local install or a hosted one) and run both npm run dev and npm run dev:worker to see a job actually flow through.
+
+# Here's a walkthrough of everything Phase 7 added, grouped by concern:
+
+1. Headless rendering
+
+render/browser.ts — getBrowser() launches a single shared headless Puppeteer instance (sandbox flags off for container compatibility, capped heap via --js-flags) lazily on first use and reuses it across jobs; closeBrowser() tears it down on worker shutdown. If Chromium crashes, the disconnected event clears the cached promise so the next call relaunches instead of returning a dead browser forever.
+render/renderPage.ts — renderPage(url) opens a page on that shared browser, navigates, and returns the fully-rendered HTML plus the final URL (post-redirects). Caps concurrent pages via a semaphore (env.renderMaxConcurrentPages) so a burst of due schedules can't spin up unbounded Chromium pages and exhaust memory.
+render/semaphore.ts — a small permit-counting Semaphore used to enforce that concurrency cap; queued acquirers are handed the release directly rather than racing a freed permit.
+2. Blocking SSRF, not just checking it once
+
+render/ssrfGuard.ts — assertRenderableUrl() rejects non-http(s) URLs and resolves the hostname, blocking anything outside ipaddr.js's "unicast" range (loopback, private ranges, link-local including the 169.254.169.254 cloud metadata address, etc.) — fail-closed on unrecognized ranges rather than an denylist of known-bad ones.
+renderPage.ts re-checks the hostname after navigation completes (page.url() may differ from the requested URL after redirects) and, more importantly, intercepts every request the page itself makes — the initial navigation, each redirect hop, and every subresource fetch — via Puppeteer's request interception, so a page can't pivot the server into fetching an internal address via a redirect or an `<img>`/`fetch()` it controls. Per-hostname results are cached for the life of one render to avoid redundant DNS lookups.
+Image/media/font requests are aborted outright (BLOCKED_RESOURCE_TYPES) since they're irrelevant to content extraction and just cost bandwidth/memory.
+3. Bounding the damage a hostile page can do
+
+A CDP Network.dataReceived listener (attachResponseSizeGuard) tallies decoded bytes as they stream in and force-closes the page once env.renderMaxResponseBytes is exceeded — deliberately not relying on Content-Length, which is frequently absent (chunked transfer, HTTP/2 proxies). Distinguished from a normal timeout via a ResponseTooLargeError vs. RenderTimeoutError so the worker (Phase 6/10) can tell "page is huge" apart from "page is slow/broken."
+4. Wiring
+
+worker.ts's job processor now calls renderPage(job.data.url) instead of the Phase 6 placeholder; InvalidUrlError/SsrfBlockedError are treated as permanent failures (UnrecoverableError) since retrying won't change a hostname's IP range, while timeouts and size-limit errors are left to BullMQ's normal retry/backoff.
+env.ts — added renderMaxConcurrentPages, renderNavigationTimeoutMs, renderMaxResponseBytes, renderUserAgent.
+Not verified against a live Chromium in this environment (no display/sandbox available here) — confirmed to build and type-check; exercise it by running npm run dev:worker with a real REDIS_URL and watching a job render an actual page.
+
+# Here's a walkthrough of everything Phase 8 & 9 added, grouped by concern:
+
+1. Turning rendered HTML into clean article text
+
+dom/extractContent.ts — extractContent(html, url) loads the rendered HTML into a JSDOM document, strips unambiguous chrome first (header/footer/nav/aside/script/style/iframe/svg/form, plus role="navigation"/"banner"/"contentinfo") rather than trusting Readability's text-density scoring alone to exclude it, then hands the cleaned document to @mozilla/readability to pull out the article's title/HTML/text. Throws ContentExtractionError when Readability can't find any article content (e.g. a page that's all chrome, or a non-article page).
+dom/normalizeText.ts — normalizeText() collapses the whitespace noise Readability's textContent leaves behind (non-breaking spaces, trailing spaces per line, runs of blank lines) into stable, compact text, so the content-hash step below isn't sensitive to incidental whitespace churn between runs.
+2. Skipping unnecessary summarization
+
+ai/contentHash.ts — hashContent() is a thin SHA-256 wrapper over the normalized article text.
+worker.ts loads the schedule's stored lastContentHash, hashes the freshly-extracted text, and short-circuits (no summarization, no save) if they match — the common case for a page that hasn't changed since the last poll.
+3. Summarization
+
+ai/summarize.ts — summarizeContent() is an extractive summarizer with no external API and no per-run cost: it splits the article into sentences, scores each by the average frequency (across the whole article) of its non-stopword terms, then keeps the four highest-scoring sentences in their original order. Short fragments (nav crumbs, citations) are filtered out by a minimum word count before scoring, since they otherwise spike the per-word average despite not being real content, and only the first ~60% of qualifying sentences are eligible at all, since trailing sections (references, related links) are rarely the article's substance regardless of site.
+Chosen over an LLM-based summary for now since it has no API key, rate limit, or per-execution cost to manage — swapping in an LLM call later only means replacing this function's body, since the worker just awaits a string.
+4. Wiring
+
+worker.ts's job processor now runs render (Phase 7) → extractContent → hash-compare → summarizeContent → persist lastContentHash, in that order, after which nothing yet does anything with the summary — email delivery (Phase 10) doesn't exist yet, so the summary is currently just logged.
+ContentExtractionError is treated as a permanent failure (UnrecoverableError), same reasoning as Phase 7's URL errors — a page that has no extractable article won't gain one on retry.
+package.json — added @mozilla/readability and jsdom (plus @types/jsdom).
+tasks.md — Phases 8 and 9 checked off.
+Not verified against a live worker/Redis in this environment for the same reason as Phase 6/7 — confirmed to build and type-check. Exercise it by running npm run dev:worker against a real REDIS_URL and a schedule pointed at an actual article URL, then watching the logs for the extracted title and generated summary.
