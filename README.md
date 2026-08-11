@@ -140,3 +140,21 @@ ContentExtractionError is treated as a permanent failure (UnrecoverableError), s
 package.json — added @mozilla/readability and jsdom (plus @types/jsdom).
 tasks.md — Phases 8 and 9 checked off.
 Not verified against a live worker/Redis in this environment for the same reason as Phase 6/7 — confirmed to build and type-check. Exercise it by running npm run dev:worker against a real REDIS_URL and a schedule pointed at an actual article URL, then watching the logs for the extracted title and generated summary.
+
+# Here's a walkthrough of everything Phase 10 added, grouped by concern:
+
+1. Sending the digest
+
+email/digestEmail.ts — sendDigestEmail() sends via EmailJS's Node SDK (@emailjs/nodejs), calling emailjs.send() with the service/template ID and public/private key from env, passing per-call options rather than a global emailjs.init() so the module stays stateless like the rest of the codebase. The private key is required (not just the public key) since EmailJS's origin-based allowlisting — its normal anti-abuse check for browser callers — doesn't apply to a server process; the private key is what lets a non-browser caller send at all.
+The template itself lives in the EmailJS dashboard, not in this repo — buildTemplateParams() just fills in to_email, subject, title, summary, source_url (the link back to the original page), and run_date as template variables. Changing the email's look-and-feel means editing the dashboard template, not this file.
+2. Telling permanent failures from transient ones
+
+EmailDeliveryError marks failures a retry can't fix: a missing/invalid service or template ID (EmailJS rejects these by throwing a plain string, not an Error, straight out of its SDK — handled explicitly since it's an unusual failure shape) or EmailJS returning a 4xx (bad request, blocked recipient). worker.ts converts this into an UnrecoverableError, same pattern as Phase 7's SSRF errors and Phase 8's ContentExtractionError, so a broken config fails the job once instead of burning all retry attempts on an error that can't self-resolve.
+Everything else — network errors, EmailJS 5xx, or 429 rate-limiting — is rethrown as a plain Error and left to BullMQ's existing retry/backoff (Phase 6), since those can plausibly succeed on the next attempt.
+3. Wiring
+
+worker.ts now selects schedule.email alongside lastContentHash, calls sendDigestEmail() right after summarizeContent(), and only advances lastContentHash after the email send succeeds — so a failed send (permanent or after retries exhausted) leaves the hash untouched and the next scheduled poll will regenerate the same summary and try sending again, rather than silently marking a never-delivered digest as done.
+env.ts — added emailjsServiceId, emailjsTemplateId, emailjsPublicKey, emailjsPrivateKey, all required with no dev fallback (unlike most other env vars) since there's no meaningful default for a third-party account's credentials — the worker won't start without them configured.
+package.json — added @emailjs/nodejs.
+tasks.md — Phase 10 checked off.
+Not verified against a live EmailJS account in this environment — no service/template/keys are configured here. Confirmed to build, lint, and type-check. To exercise it: create an EmailJS account, connect an email service (Gmail/Outlook/SMTP) in its dashboard, create a template using the `to_email`/`subject`/`title`/`summary`/`source_url`/`run_date` variables above, fill EMAILJS_SERVICE_ID/EMAILJS_TEMPLATE_ID/EMAILJS_PUBLIC_KEY/EMAILJS_PRIVATE_KEY into backend/.env, then run npm run dev:worker against a real REDIS_URL and a schedule pointed at a real article URL to see an actual digest land in an inbox.

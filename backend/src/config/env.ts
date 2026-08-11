@@ -24,4 +24,8 @@ export const env = {
   renderMaxResponseBytes: Number(required("RENDER_MAX_RESPONSE_BYTES", String(25 * 1024 * 1024))),
   renderMaxConcurrentPages: Number(required("RENDER_MAX_CONCURRENT_PAGES", "3")),
   renderUserAgent: required("RENDER_USER_AGENT", "NewsletterExtensionBot/1.0 (+render worker)"),
+  emailjsServiceId: required("EMAILJS_SERVICE_ID"),
+  emailjsTemplateId: required("EMAILJS_TEMPLATE_ID"),
+  emailjsPublicKey: required("EMAILJS_PUBLIC_KEY"),
+  emailjsPrivateKey: required("EMAILJS_PRIVATE_KEY"),
 };

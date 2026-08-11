@@ -67,9 +67,9 @@
 
 ## Phase 10 - Email
 
--   [ ] Email template
--   [ ] Send digest
--   [ ] Link to original webpage
+-   [x] Email template
+-   [x] Send digest
+-   [x] Link to original webpage
 
 ## Phase 11 - History
 

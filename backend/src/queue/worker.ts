@@ -4,6 +4,7 @@ import { hashContent } from "../ai/contentHash.js";
 import { summarizeContent } from "../ai/summarize.js";
 import { env } from "../config/env.js";
 import { ContentExtractionError, extractContent } from "../dom/extractContent.js";
+import { EmailDeliveryError, sendDigestEmail } from "../email/digestEmail.js";
 import { ScheduleModel } from "../models/schedule.model.js";
 import { closeBrowser } from "../render/browser.js";
 import { renderPage } from "../render/renderPage.js";
@@ -45,7 +46,7 @@ async function processExecutionJob(job: Job<ExecutionJob>): Promise<void> {
     `Extracted "${content.title}" (${content.text.length} chars) for schedule ${job.data.scheduleId}`,
   );
 
-  const schedule = await ScheduleModel.findById(job.data.scheduleId).select("lastContentHash");
+  const schedule = await ScheduleModel.findById(job.data.scheduleId).select("email lastContentHash");
   if (!schedule) {
     console.log(`Schedule ${job.data.scheduleId} no longer exists, dropping job ${job.id}`);
     return;
@@ -60,7 +61,25 @@ async function processExecutionJob(job: Job<ExecutionJob>): Promise<void> {
   const summary = summarizeContent(content.text);
 
   console.log(`Summary for schedule ${job.data.scheduleId}: ${summary}`);
-  // Email delivery (Phase 10) isn't implemented yet.
+
+  try {
+    await sendDigestEmail({
+      toEmail: schedule.email,
+      title: content.title,
+      summary,
+      sourceUrl: finalUrl,
+      runDate: new Date(),
+    });
+  } catch (error) {
+    // A misconfigured template/service ID won't fix itself on retry -
+    // fail the job permanently instead of burning retry attempts on it.
+    if (error instanceof EmailDeliveryError) {
+      throw new UnrecoverableError(error.message);
+    }
+    throw error;
+  }
+
+  console.log(`Digest email sent to ${schedule.email} for schedule ${job.data.scheduleId}`);
 
   schedule.lastContentHash = contentHash;
   await schedule.save();
