@@ -57,6 +57,7 @@
 -   [x] Remove header/footer/navigation
 -   [x] Extract main/article content
 -   [x] Normalize text
+-   [x] Detect listing/index pages (repeated post-card structure) and extract each item's title/URL/excerpt instead of flattening the whole page into one article
 
 ## Phase 9 - AI
 
@@ -64,12 +65,15 @@
 -   [x] Build summarization service
 -   [x] Define prompt
 -   [x] Handle API failures
+-   [x] Listing pages: track previously-seen item URLs per schedule, diff to find newly-added posts only
+-   [x] Listing pages: deep-summarize each new post from its own page (not just the listing's teaser excerpt), capped per digest
 
 ## Phase 10 - Email
 
 -   [x] Email template
 -   [x] Send digest
 -   [x] Link to original webpage
+-   [x] Listing digest format: "N new posts" + bullet list (title, per-post summary, link) instead of one flattened paragraph
 
 ## Phase 11 - History
 

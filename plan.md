@@ -96,6 +96,11 @@ SSRF vector by default. Required before Phase 7 ships:
 
 -   Remove headers, footers, ads, scripts
 -   Extract main/article content
+-   Detect listing/index pages (a blog's post grid, not a single article) by
+    the repeated post-card DOM structure, and extract each item's title,
+    URL, and excerpt separately instead of flattening the whole page into
+    one incoherent article — falls back to normal single-article extraction
+    when no such repeated structure is found
 
 ### Phase 9: AI
 
@@ -103,11 +108,22 @@ SSRF vector by default. Required before Phase 7 ships:
     last run — cost control, not just a future nice-to-have)
 -   Summarize cleaned content
 -   Limit output to concise digest
+-   Listing pages: diff the current item list against the URLs seen on the
+    last check (stored per schedule) so only newly-added posts are reported,
+    not the same posts re-sent whenever the page's markup shifts slightly
+-   Listing pages: render and summarize each new post's own page for a real
+    summary, rather than relying on the short teaser text already sitting on
+    the index page; capped per digest to bound render cost, with a
+    per-post fallback to the teaser excerpt if that post's page fails
 
 ### Phase 10: Email
 
 -   Send digest
 -   Include original URL
+-   Listing digest format: "N new posts" plus one bullet per post (linked
+    title + summary), reusing the same EmailJS template as the
+    single-article digest by filling its summary field with an HTML list
+    instead of a paragraph
 
 ### Phase 11: History
 
