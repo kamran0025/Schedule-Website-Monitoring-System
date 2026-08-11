@@ -1,6 +1,6 @@
 import { Schema, model, type InferSchemaType } from "mongoose";
 
-export const MIN_SCHEDULE_INTERVAL_MINUTES = 15;
+export const MIN_SCHEDULE_INTERVAL_MINUTES = 3;
 
 //defines the Schedule collection: one document per user's "watch this URL" subscription.
 // Holds instanceId/email (who owns it), url/intervalMinutes (what to watch and how often),
@@ -26,6 +26,12 @@ const scheduleSchema = new Schema(
     lastRunAt: { type: Date, default: null },
     nextRunAt: { type: Date, required: true },
     lastContentHash: { type: String, default: null },
+    // For listing/index pages (extractListing.ts): the item URLs seen as
+    // of the last check, so the next run can email only newly-added posts
+    // instead of re-notifying about the same ones every time the page's
+    // markup shifts slightly. Unused for single-article schedules, which
+    // rely on lastContentHash instead.
+    lastListingItemKeys: { type: [String], default: [] },
   },
   { timestamps: true },
 );

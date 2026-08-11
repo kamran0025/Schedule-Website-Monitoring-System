@@ -28,4 +28,7 @@ export const env = {
   emailjsTemplateId: required("EMAILJS_TEMPLATE_ID"),
   emailjsPublicKey: required("EMAILJS_PUBLIC_KEY"),
   emailjsPrivateKey: required("EMAILJS_PRIVATE_KEY"),
+  historyRetentionDays: Number(required("HISTORY_RETENTION_DAYS", "30")),
+  historyCleanupIntervalMs: Number(required("HISTORY_CLEANUP_INTERVAL_MS", String(24 * 60 * 60 * 1000))),
+  listingMaxItemsPerDigest: Number(required("LISTING_MAX_ITEMS_PER_DIGEST", "5")),
 };

@@ -9,6 +9,31 @@ import { env } from "../config/env.js";
 // (Phase 6) gets a chance at it.
 export class EmailDeliveryError extends Error {}
 
+// Shared by both single-article digests (below) and listing digests
+// (listingDigestEmail.ts) - both just fill in the same dashboard-managed
+// EmailJS template with different values.
+export async function sendTemplateEmail(templateParams: Record<string, string>): Promise<void> {
+  try {
+    await emailjs.send(env.emailjsServiceId, env.emailjsTemplateId, templateParams, {
+      publicKey: env.emailjsPublicKey,
+      privateKey: env.emailjsPrivateKey,
+    });
+  } catch (error) {
+    // Missing service/public/template ID rejects with a plain string, not
+    // an Error - always a configuration problem, never transient.
+    if (typeof error === "string") {
+      throw new EmailDeliveryError(error);
+    }
+    if (error instanceof EmailJSResponseStatus) {
+      if (error.status === 429 || error.status >= 500) {
+        throw new Error(`EmailJS delivery failed (${error.status}): ${error.text}`, { cause: error });
+      }
+      throw new EmailDeliveryError(`EmailJS rejected the digest (${error.status}): ${error.text}`);
+    }
+    throw error;
+  }
+}
+
 export interface DigestEmailInput {
   toEmail: string;
   title: string;
@@ -30,25 +55,5 @@ function buildTemplateParams(input: DigestEmailInput): Record<string, string> {
 }
 
 export async function sendDigestEmail(input: DigestEmailInput): Promise<void> {
-  const templateParams = buildTemplateParams(input);
-
-  try {
-    await emailjs.send(env.emailjsServiceId, env.emailjsTemplateId, templateParams, {
-      publicKey: env.emailjsPublicKey,
-      privateKey: env.emailjsPrivateKey,
-    });
-  } catch (error) {
-    // Missing service/public/template ID rejects with a plain string, not
-    // an Error - always a configuration problem, never transient.
-    if (typeof error === "string") {
-      throw new EmailDeliveryError(error);
-    }
-    if (error instanceof EmailJSResponseStatus) {
-      if (error.status === 429 || error.status >= 500) {
-        throw new Error(`EmailJS delivery failed (${error.status}): ${error.text}`, { cause: error });
-      }
-      throw new EmailDeliveryError(`EmailJS rejected the digest (${error.status}): ${error.text}`);
-    }
-    throw error;
-  }
+  await sendTemplateEmail(buildTemplateParams(input));
 }

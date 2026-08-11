@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+/* Tailwind v4's `dark:` variant already follows prefers-color-scheme by
+   default - this just tells the popup's own chrome (scrollbars, form
+   control defaults) to render dark too instead of forcing light. */
+:root {
+  color-scheme: light dark;
+}

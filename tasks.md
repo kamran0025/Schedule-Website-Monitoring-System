@@ -73,18 +73,18 @@
 
 ## Phase 11 - History
 
--   [ ] Store execution logs
--   [ ] Build history API
--   [ ] Display history in extension
--   [ ] Retention/cleanup job for old execution logs
+-   [x] Store execution logs
+-   [x] Build history API
+-   [x] Display history in extension
+-   [x] Retention/cleanup job for old execution logs
 
 ## Phase 12 - UI Polish
 
--   [ ] Loading states
--   [ ] Toast notifications
--   [ ] Empty states
--   [ ] Search and filter
--   [ ] Dark mode
+-   [x] Loading states
+-   [x] Toast notifications
+-   [x] Empty states
+-   [x] Search and filter
+-   [x] Dark mode
 
 ## Phase 13 - Production
 

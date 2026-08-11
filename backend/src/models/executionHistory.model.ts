@@ -19,6 +19,10 @@ const executionHistorySchema = new Schema({
 });
 
 executionHistorySchema.index({ scheduleId: 1, startedAt: -1 });
+// Separate from the compound index above (which is only useful when
+// filtering by scheduleId) - the retention cleanup job deletes by
+// startedAt alone, across all schedules.
+executionHistorySchema.index({ startedAt: 1 });
 
 export type ExecutionHistory = InferSchemaType<typeof executionHistorySchema>;
 

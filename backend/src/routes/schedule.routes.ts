@@ -3,6 +3,7 @@ import { Types } from "mongoose";
 
 import { env } from "../config/env.js";
 import { requireApiKey } from "../middleware/auth.middleware.js";
+import { ExecutionHistoryModel } from "../models/executionHistory.model.js";
 import { MIN_SCHEDULE_INTERVAL_MINUTES, ScheduleModel } from "../models/schedule.model.js";
 
 export const scheduleRouter = Router();
@@ -124,6 +125,7 @@ scheduleRouter.delete("/:id", async (req, res) => {
   }
 
   await schedule.deleteOne();
+  await ExecutionHistoryModel.deleteMany({ scheduleId: schedule._id });
   res.status(204).send();
 });
 
