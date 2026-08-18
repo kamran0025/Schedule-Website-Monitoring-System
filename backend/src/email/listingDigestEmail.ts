@@ -43,7 +43,7 @@ function buildSummaryHtml(items: ListingDigestItem[], totalNewCount: number): st
 export async function sendListingDigestEmail(input: ListingDigestInput): Promise<void> {
   const count = input.totalNewCount;
   const title = `${count} new post${count === 1 ? "" : "s"} on ${input.indexUrl}`;
-
+  console.log({email:input.toEmail});
   await sendTemplateEmail({
     to_email: input.toEmail,
     subject: `Update: ${title}`,

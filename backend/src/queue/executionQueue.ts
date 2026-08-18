@@ -10,12 +10,14 @@ export interface ExecutionJob {
   url: string;
 }
 
-const queue = new Queue<ExecutionJob>(EXECUTION_QUEUE_NAME, {
+// Exported so the /metrics route (monitoring.routes.ts) can read queue
+// depth via getJobCounts() without opening its own separate Queue/connection.
+export const executionQueue = new Queue<ExecutionJob>(EXECUTION_QUEUE_NAME, {
   connection: createRedisConnection(),
 });
 
 export async function enqueueExecution(job: ExecutionJob): Promise<void> {
-  await queue.add("execute", job, {
+  await executionQueue.add("execute", job, {
     attempts: env.executionJobMaxAttempts,
     backoff: { type: "exponential", delay: env.executionJobBackoffDelayMs },
     removeOnComplete: 100,

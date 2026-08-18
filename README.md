@@ -210,3 +210,33 @@ email/escapeHtml.ts (new) — every title/summary/URL going into that bullet lis
 One dashboard change needed on your end: the EmailJS template's {{summary}} placeholder is currently wrapped in a <p> (`<p style="...">{{summary}}</p>`) for the single-article case. A <ul> nested inside a <p> is invalid HTML - most mail clients will still render it tolerably, but swapping that wrapper to a <div> would make listing digests render correctly rather than just "probably fine."
 env.ts — added listingMaxItemsPerDigest.
 Not verified against a live EmailJS send or a real-world listing page in this environment - the detection heuristic is confirmed against synthetic markup (see point 1) and the backend type-checks/lints clean, but the actual "N posts crawled and summarized and emailed" path needs a real Redis + worker + a schedule pointed at an actual blog index to see the final email as EmailJS renders it.
+
+# Here's a walkthrough of everything Phase 13 added, grouped by concern:
+
+1. Logging
+
+config/logger.ts — a single pino instance, pretty-printed with colors in development (via pino-pretty) and plain JSON lines in production (what a real log aggregator expects to parse, not colorized text meant for a terminal).
+Every console.log/console.error in the operational code paths - config/db.ts, index.ts, worker.ts (the entry point), scheduler/scheduler.ts, history/historyCleanup.ts, queue/worker.ts, app.ts's error handler - now goes through logger.*, with structured fields (scheduleId, jobId, err) instead of string-interpolated messages where that's actually useful to filter on later.
+app.ts also gets pino-http as request-logging middleware, mounted before the monitoring routes so /health and /metrics polling doesn't spam the log on every scrape.
+2. Monitoring
+
+routes/monitoring.routes.ts (new) — GET /health now actually checks something: mongoose.connection.readyState for Mongo and a ping() against a dedicated long-lived Redis connection, returning 503 with which dependency is down instead of always blindly returning {status: "ok"} regardless of whether the database is reachable.
+GET /metrics exposes process.uptime()/process.memoryUsage() and BullMQ queue depth (waiting/active/completed/failed/delayed, via executionQueue.getJobCounts() - the Queue instance from queue/executionQueue.ts is now exported for this). Deliberately unauthenticated, same as /health - it's operational data, not user data, and in a real deployment this should be kept off the public internet at the network/proxy level rather than behind application auth (a Phase 15 concern, not something worth building a whole admin-auth system for here).
+Both mounted before the /api rate limiter so monitoring tools polling them aren't rate-limited alongside real traffic.
+3. Browser pool
+
+render/browser.ts was rewritten from one shared Puppeteer browser to a round-robin pool of env.renderBrowserPoolSize (default 2) independently-launched Chromium processes. getBrowser()/closeBrowser() keep the exact same signatures, so renderPage.ts and queue/worker.ts needed zero changes - this is a drop-in internal upgrade. The page-concurrency cap from Phase 7 (renderMaxConcurrentPages, via the existing Semaphore in renderPage.ts) still bounds the total number of concurrent pages regardless of which pool slot they land on.
+Also fixed a latent bug while at it: the original single-browser version never cleared browserPromise if launchBrowser() itself rejected (e.g. Chromium failing to start), so every subsequent render would keep awaiting the same permanently-rejected promise instead of retrying. Each pool slot now clears itself on a failed launch too, not just on a later disconnect.
+4. Snapshot deduplication
+
+render/snapshotCache.ts (new) — renderPageDeduped() coalesces renders by URL: concurrent callers for the same URL share one in-flight render instead of each triggering their own, and a completed render stays cached for env.snapshotDedupeTtlMs (default 2 minutes) for callers arriving slightly later. This matters because a full render is the most expensive step in the pipeline, and it's realistic for multiple schedules - different instances subscribed to the same popular blog, or a listing page linking to a post that's separately its own schedule - to become due around the same scheduler tick.
+The TTL default is kept comfortably under MIN_SCHEDULE_INTERVAL_MINUTES (3 minutes) so no schedule ever sees content staler than its own configured cadence would already tolerate on its own.
+queue/worker.ts now calls renderPageDeduped() instead of renderPage() directly, at both call sites: the main per-schedule render and each listing item's individual deep-summarization render.
+5. Error handling
+
+index.ts and worker.ts (entry points) both now register process.on("unhandledRejection", ...) (log and keep running - one async slip elsewhere shouldn't take down a process serving/processing everything else) and process.on("uncaughtException", ...) (log fatal and exit(1), since Node's own guidance is that the process is in an undefined state after a truly uncaught synchronous throw - restarting it is left to a process supervisor, which is a Phase 15 concern that doesn't exist yet).
+queue/worker.ts's BullMQ Worker now has an worker.on("error", ...) listener - errors not tied to any specific job (e.g. connection trouble) would otherwise be an unhandled EventEmitter 'error' event, which Node treats as fatal.
+Fixed a real bug along the way: history/historyCleanup.ts's poll loop called cleanupOldHistory() with void and no .catch(), unlike scheduler.ts's equivalent loop which already caught its own errors - a transient Mongo error during cleanup would have been an unhandled rejection. Now wrapped the same way scheduler.ts already does it.
+env.ts — added logLevel, renderBrowserPoolSize, snapshotDedupeTtlMs.
+package.json — added pino, pino-http (plus pino-pretty as a dev dependency for local formatting).
+Verified in this environment: started the API against the real local Redis and MongoDB Atlas cluster used throughout this project, confirmed pretty-printed logs appear on startup, and hit both endpoints directly - GET /health returned {"status":"ok","mongo":"up","redis":"up"}, and GET /metrics returned real uptime/memory/queue-depth numbers reflecting actual BullMQ state left over from earlier testing (100 completed, 11 failed jobs). The browser pool and snapshot dedup changes type-check and lint clean but weren't separately exercised against a live multi-browser Puppeteer run or a real concurrent-duplicate-URL race in this session.

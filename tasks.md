@@ -92,11 +92,11 @@
 
 ## Phase 13 - Production
 
--   [ ] Logging
--   [ ] Monitoring
--   [ ] Browser pool
--   [ ] Snapshot deduplication
--   [ ] Error handling
+-   [x] Logging (structured, via pino - request logs + operational logs across worker/scheduler/cleanup)
+-   [x] Monitoring (/health checks Mongo+Redis, /metrics exposes queue depth + process stats)
+-   [x] Browser pool (round-robin pool of N Chromium processes instead of one shared browser)
+-   [x] Snapshot deduplication (coalesce concurrent/near-simultaneous renders of the same URL across schedules)
+-   [x] Error handling (process-level unhandledRejection/uncaughtException handlers, BullMQ Worker 'error' listener, fixed an unguarded history-cleanup rejection)
 
 ## Phase 14 - Testing
 

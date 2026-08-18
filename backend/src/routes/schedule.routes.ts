@@ -66,7 +66,11 @@ scheduleRouter.post("/", async (req, res) => {
     email,
     url,
     intervalMinutes,
-    nextRunAt: new Date(Date.now() + intervalMinutes * 60_000),
+    // Due immediately: the scheduler's next poll tick picks this up right
+    // away to capture the baseline hash/listing (worker.ts skips emailing
+    // on a schedule's first check). Interval-paced checks only start after
+    // that first run claims the schedule and pushes nextRunAt forward.
+    nextRunAt: new Date(),
   });
 
   res.status(201).json(schedule);

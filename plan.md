@@ -140,10 +140,22 @@ SSRF vector by default. Required before Phase 7 ships:
 
 ### Phase 13: Production Readiness
 
--   Logging
--   Monitoring
--   Browser pool
--   Retry & backoff
+-   Structured logging (pino) across the API and worker processes, replacing
+    ad hoc console.log/error, plus HTTP request logging
+-   Monitoring: a deeper /health check (Mongo + Redis connectivity, not just
+    "the process is up") and a /metrics endpoint exposing BullMQ queue depth
+    and process resource usage
+-   Browser pool: multiple independently-launched Chromium processes drawn
+    round-robin, instead of one shared browser, so a single crashed/wedged
+    browser doesn't stall every in-flight render at once
+-   Snapshot deduplication: coalesce renders of the same URL when multiple
+    schedules (possibly from different instances) become due around the
+    same scheduler tick, instead of rendering it once per schedule
+-   Retry & backoff (already covered by Phase 6's BullMQ configuration)
+-   Error handling: process-level unhandledRejection/uncaughtException
+    handlers on both entry points, a BullMQ Worker 'error' listener, and a
+    fix for an unguarded rejection in the history cleanup loop that could
+    have crashed the API process
 
 ### Phase 14: Testing
 

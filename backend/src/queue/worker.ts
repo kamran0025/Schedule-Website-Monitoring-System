@@ -3,6 +3,7 @@ import { UnrecoverableError, Worker, type Job } from "bullmq";
 import { hashContent } from "../ai/contentHash.js";
 import { summarizeContent } from "../ai/summarize.js";
 import { env } from "../config/env.js";
+import { logger } from "../config/logger.js";
 import { ContentExtractionError, extractContent } from "../dom/extractContent.js";
 import { extractListing, type ListingItem } from "../dom/extractListing.js";
 import { EmailDeliveryError, sendDigestEmail } from "../email/digestEmail.js";
@@ -10,8 +11,8 @@ import { sendListingDigestEmail } from "../email/listingDigestEmail.js";
 import { ExecutionHistoryModel } from "../models/executionHistory.model.js";
 import { ScheduleModel } from "../models/schedule.model.js";
 import { closeBrowser } from "../render/browser.js";
-import { renderPage } from "../render/renderPage.js";
 import { InvalidUrlError, SsrfBlockedError } from "../render/ssrfGuard.js";
+import { renderPageDeduped } from "../render/snapshotCache.js";
 import { createRedisConnection } from "./connection.js";
 import { EXECUTION_QUEUE_NAME, type ExecutionJob } from "./executionQueue.js";
 
@@ -51,7 +52,7 @@ async function summarizeListingItem(
   item: ListingItem,
 ): Promise<{ title: string; url: string; summary: string }> {
   try {
-    const { html, finalUrl } = await renderPage(item.url);
+    const { html, finalUrl } = await renderPageDeduped(item.url);
     const content = extractContent(html, finalUrl);
     // Prefer the title already read off the listing card - it's the
     // post's actual displayed title. The deep-rendered page's own <title>
@@ -59,7 +60,7 @@ async function summarizeListingItem(
     // title on every post page, which is worse than what we already had.
     return { title: item.title || content.title, url: finalUrl, summary: summarizeContent(content.text) };
   } catch (error) {
-    console.warn(`Could not deep-summarize listing item ${item.url}: ${errorMessage(error)}`);
+    logger.warn({ err: error, url: item.url }, "Could not deep-summarize listing item");
     return { title: item.title, url: item.url, summary: item.excerpt || "No preview available." };
   }
 }
@@ -71,12 +72,18 @@ async function processListingSchedule(
   indexUrl: string,
 ): Promise<void> {
   const schedule = await ScheduleModel.findById(job.data.scheduleId).select(
-    "email lastListingItemKeys",
+    "email lastListingItemKeys lastRunAt",
   );
   if (!schedule) {
-    console.log(`Schedule ${job.data.scheduleId} no longer exists, dropping job ${job.id}`);
+    logger.info({ scheduleId: job.data.scheduleId, jobId: job.id }, "Schedule no longer exists, dropping job");
     return;
   }
+
+  // Never checked before: everything on the page would otherwise look
+  // "new" and trigger a digest of the pre-existing backlog. Capture it as
+  // the baseline instead - only items that show up on a later run (i.e.
+  // added after the schedule was created) should ever get emailed.
+  const isFirstRun = schedule.lastRunAt === null;
 
   const seenKeys = new Set(schedule.lastListingItemKeys);
   const newItems = items.filter((item) => !seenKeys.has(item.url));
@@ -87,10 +94,23 @@ async function processListingSchedule(
   // scrolls off the page's first view and later reappears get reported as
   // "new" a second time.
   schedule.lastListingItemKeys = items.map((item) => item.url).slice(0, 300);
+  schedule.lastRunAt = startedAt;
   await schedule.save();
 
+  if (isFirstRun) {
+    logger.info(
+      { scheduleId: job.data.scheduleId, itemCount: items.length },
+      "First check for schedule, capturing baseline listing without emailing",
+    );
+    await recordHistory(job.data.scheduleId, startedAt, "skipped", {
+      contentHash,
+      summary: "Baseline captured on first check; existing items not emailed",
+    });
+    return;
+  }
+
   if (newItems.length === 0) {
-    console.log(`No new listing items for schedule ${job.data.scheduleId}`);
+    logger.info({ scheduleId: job.data.scheduleId }, "No new listing items");
     await recordHistory(job.data.scheduleId, startedAt, "skipped", { contentHash });
     return;
   }
@@ -125,8 +145,9 @@ async function processListingSchedule(
     throw error;
   }
 
-  console.log(
-    `Listing digest (${newItems.length} new post(s)) sent to ${schedule.email} for schedule ${job.data.scheduleId}`,
+  logger.info(
+    { scheduleId: job.data.scheduleId, email: schedule.email, newPostCount: newItems.length },
+    "Listing digest sent",
   );
   await recordHistory(job.data.scheduleId, startedAt, "success", { contentHash, summary: historySummary });
 }
@@ -148,26 +169,48 @@ async function processArticleSchedule(
     throw error;
   }
 
-  console.log(
-    `Extracted "${content.title}" (${content.text.length} chars) for schedule ${job.data.scheduleId}`,
+  logger.info(
+    { scheduleId: job.data.scheduleId, title: content.title, chars: content.text.length },
+    "Extracted article content",
   );
 
-  const schedule = await ScheduleModel.findById(job.data.scheduleId).select("email lastContentHash");
+  const schedule = await ScheduleModel.findById(job.data.scheduleId).select(
+    "email lastContentHash lastRunAt",
+  );
   if (!schedule) {
-    console.log(`Schedule ${job.data.scheduleId} no longer exists, dropping job ${job.id}`);
+    logger.info({ scheduleId: job.data.scheduleId, jobId: job.id }, "Schedule no longer exists, dropping job");
     return;
   }
 
   const contentHash = hashContent(content.text);
+
+  // Never checked before: the page's current content would otherwise look
+  // like a "change" and trigger an email right away. Capture it as the
+  // baseline instead - only a change found on a later run (i.e. after the
+  // schedule was created) should get emailed.
+  if (schedule.lastRunAt === null) {
+    logger.info({ scheduleId: job.data.scheduleId }, "First check for schedule, capturing baseline content without emailing");
+    schedule.lastContentHash = contentHash;
+    schedule.lastRunAt = startedAt;
+    await schedule.save();
+    await recordHistory(job.data.scheduleId, startedAt, "skipped", {
+      contentHash,
+      summary: "Baseline captured on first check; no email sent",
+    });
+    return;
+  }
+
   if (contentHash === schedule.lastContentHash) {
-    console.log(`Content unchanged for schedule ${job.data.scheduleId}, skipping summarization`);
+    logger.info({ scheduleId: job.data.scheduleId }, "Content unchanged, skipping summarization");
+    schedule.lastRunAt = startedAt;
+    await schedule.save();
     await recordHistory(job.data.scheduleId, startedAt, "skipped", { contentHash });
     return;
   }
 
   const summary = summarizeContent(content.text);
 
-  console.log(`Summary for schedule ${job.data.scheduleId}: ${summary}`);
+  logger.info({ scheduleId: job.data.scheduleId, summary }, "Generated summary");
 
   try {
     await sendDigestEmail({
@@ -191,21 +234,25 @@ async function processArticleSchedule(
     throw error;
   }
 
-  console.log(`Digest email sent to ${schedule.email} for schedule ${job.data.scheduleId}`);
+  logger.info({ scheduleId: job.data.scheduleId, email: schedule.email }, "Digest email sent");
 
   schedule.lastContentHash = contentHash;
+  schedule.lastRunAt = startedAt;
   await schedule.save();
   await recordHistory(job.data.scheduleId, startedAt, "success", { contentHash, summary });
 }
 
 async function processExecutionJob(job: Job<ExecutionJob>): Promise<void> {
   const startedAt = new Date();
-  console.log(`Processing execution job ${job.id} for schedule ${job.data.scheduleId} (${job.data.url})`);
+  logger.info(
+    { jobId: job.id, scheduleId: job.data.scheduleId, url: job.data.url },
+    "Processing execution job",
+  );
 
   let html: string;
   let finalUrl: string;
   try {
-    const result = await renderPage(job.data.url);
+    const result = await renderPageDeduped(job.data.url);
     html = result.html;
     finalUrl = result.finalUrl;
   } catch (error) {
@@ -218,12 +265,13 @@ async function processExecutionJob(job: Job<ExecutionJob>): Promise<void> {
     throw error;
   }
 
-  console.log(`Rendered ${html.length} chars of HTML for schedule ${job.data.scheduleId}`);
+  logger.info({ scheduleId: job.data.scheduleId, chars: html.length }, "Rendered page");
 
   const listingItems = extractListing(html, finalUrl);
   if (listingItems) {
-    console.log(
-      `Detected a listing page (${listingItems.length} items) for schedule ${job.data.scheduleId}`,
+    logger.info(
+      { scheduleId: job.data.scheduleId, itemCount: listingItems.length },
+      "Detected a listing page",
     );
     await processListingSchedule(job, startedAt, listingItems, finalUrl);
     return;
@@ -239,17 +287,28 @@ export function startWorker(): Worker<ExecutionJob> {
   });
 
   worker.on("completed", (job) => {
-    console.log(`Execution job ${job.id} completed for schedule ${job.data.scheduleId}`);
+    logger.info({ jobId: job.id, scheduleId: job.data.scheduleId }, "Execution job completed");
   });
 
   worker.on("failed", (job, error) => {
-    console.error(`Execution job ${job?.id} failed for schedule ${job?.data.scheduleId}:`, error);
+    logger.error(
+      { jobId: job?.id, scheduleId: job?.data.scheduleId, err: error },
+      "Execution job failed",
+    );
+  });
+
+  // Not tied to any specific job (connection issues, internal BullMQ
+  // errors) - without a listener, this would surface as an unhandled
+  // 'error' event and crash the whole worker process instead of just
+  // logging it.
+  worker.on("error", (error) => {
+    logger.error({ err: error }, "Worker error");
   });
 
   worker.on("closed", () => {
     void closeBrowser();
   });
 
-  console.log(`Worker started, concurrency ${env.executionWorkerConcurrency}`);
+  logger.info(`Worker started, concurrency ${env.executionWorkerConcurrency}`);
   return worker;
 }

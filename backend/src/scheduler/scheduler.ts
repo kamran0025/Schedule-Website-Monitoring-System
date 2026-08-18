@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { logger } from "../config/logger.js";
 import { ScheduleModel } from "../models/schedule.model.js";
 import { enqueueExecution } from "../queue/executionQueue.js";
 
@@ -34,9 +35,9 @@ export function startScheduler(): void {
 
   pollHandle = setInterval(() => {
     pollDueSchedules().catch((error: unknown) => {
-      console.error("Scheduler poll failed:", error);
+      logger.error({ err: error }, "Scheduler poll failed");
     });
   }, env.schedulerPollIntervalMs);
 
-  console.log(`Scheduler started, polling every ${env.schedulerPollIntervalMs}ms`);
+  logger.info(`Scheduler started, polling every ${env.schedulerPollIntervalMs}ms`);
 }

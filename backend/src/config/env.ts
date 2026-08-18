@@ -31,4 +31,7 @@ export const env = {
   historyRetentionDays: Number(required("HISTORY_RETENTION_DAYS", "30")),
   historyCleanupIntervalMs: Number(required("HISTORY_CLEANUP_INTERVAL_MS", String(24 * 60 * 60 * 1000))),
   listingMaxItemsPerDigest: Number(required("LISTING_MAX_ITEMS_PER_DIGEST", "5")),
+  logLevel: required("LOG_LEVEL", "info"),
+  renderBrowserPoolSize: Number(required("RENDER_BROWSER_POOL_SIZE", "2")),
+  snapshotDedupeTtlMs: Number(required("SNAPSHOT_DEDUPE_TTL_MS", "120000")),
 };
